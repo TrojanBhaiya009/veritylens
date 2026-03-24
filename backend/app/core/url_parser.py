@@ -4,10 +4,17 @@ Uses httpx + BeautifulSoup with multiple strategies.
 """
 
 import logging
+import os
 import httpx
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
+
+
+def _ssl_verify_enabled() -> bool:
+    """Return True unless URL_FETCH_VERIFY_SSL is explicitly disabled."""
+    value = os.getenv("URL_FETCH_VERIFY_SSL", "true").strip().lower()
+    return value not in {"0", "false", "no", "off"}
 
 # Common browser user agent
 USER_AGENT = (
@@ -52,7 +59,7 @@ async def extract_text_from_url(url: str) -> dict:
         async with httpx.AsyncClient(
             timeout=20,
             follow_redirects=True,
-            verify=False,  # Some sites have SSL issues
+            verify=_ssl_verify_enabled(),
         ) as client:
             headers = {
                 "User-Agent": USER_AGENT,
@@ -73,7 +80,7 @@ async def extract_text_from_url(url: str) -> dict:
             async with httpx.AsyncClient(
                 timeout=20,
                 follow_redirects=True,
-                verify=False,
+                verify=_ssl_verify_enabled(),
             ) as client:
                 # Try with minimal headers (some sites block complex UA strings)
                 resp = await client.get(url, headers={"User-Agent": "curl/8.0"})

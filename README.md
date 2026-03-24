@@ -91,7 +91,7 @@ Frontend URL: `http://127.0.0.1:5173`
 
 ## API
 
-### `POST /api/verify`
+### `POST /api/analyze`
 
 Request body:
 
@@ -103,6 +103,45 @@ Request body:
 ```
 
 Provide either `text` or `url`.
+
+### `GET /api/health`
+
+Health endpoint for deployment checks.
+
+## Deployment (Render + Vercel)
+
+### 1. Deploy backend on Render
+
+Service settings:
+
+- Root Directory: `backend`
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Health Check Path: `/api/health`
+
+Backend environment variables:
+
+- `CORS_ORIGINS` = comma-separated origins (example: `https://your-app.vercel.app,http://localhost:5173`)
+- `CORS_ORIGIN_REGEX` = optional regex for dynamic preview domains (default allows `*.vercel.app`)
+- `URL_FETCH_VERIFY_SSL` = `true` (recommended default)
+
+### 2. Deploy frontend on Vercel
+
+Project settings:
+
+- Root Directory: `frontend`
+- Build Command: `npm run build`
+- Output Directory: `dist`
+
+Vercel environment variable:
+
+- `VITE_API_BASE` = your Render backend URL (example: `https://your-backend.onrender.com`)
+
+### 3. Verify deployment
+
+1. Open `https://<render-service>.onrender.com/api/health`
+2. Open your Vercel frontend URL
+3. Submit sample text and confirm streaming results arrive
 
 ## Security Notes
 

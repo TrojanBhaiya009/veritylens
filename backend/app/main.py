@@ -6,6 +6,7 @@ FastAPI backend with SSE streaming for per-claim pipeline progress.
 import asyncio
 import json
 import logging
+import os
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -34,16 +35,27 @@ app = FastAPI(
     version="4.0.0",
 )
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+
+def _parse_cors_origins() -> list[str]:
+    """Parse comma-separated CORS_ORIGINS env var; fall back to local dev origins."""
+    default_origins = [
         "http://localhost:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
-    ],
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+    ]
+    raw = os.getenv("CORS_ORIGINS", "")
+    env_origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return env_origins or default_origins
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_parse_cors_origins(),
+    allow_origin_regex=os.getenv(
+        "CORS_ORIGIN_REGEX",
+        r"https?://(localhost|127\.0\.0\.1)(:\d+)?|https://.*\.vercel\.app",
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
