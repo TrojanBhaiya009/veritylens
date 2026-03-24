@@ -10,6 +10,6 @@ lxml_html_clean
 python-multipart>=0.0.20
 Pillow>=10.0.0
 numpy>=1.26.0
-huggingface_hub>=0.20.0
-transformers>=4.36.0
-torch>=2.1.0
+# NOTE: torch, transformers, huggingface_hub removed — too heavy for free-tier hosting (512MB).
+# Deepfake detection gracefully returns "Unavailable" without them.
+# Re-add if deploying on a server with >=2GB RAM.

@@ -49,7 +49,16 @@ def _load_model():
 
 def _run_inference(image: Image.Image) -> dict:
     """Run inference synchronously (meant to be called via asyncio.to_thread)."""
-    import torch
+    try:
+        import torch
+    except ImportError:
+        return {
+            "deepfake_probability": 0,
+            "confidence": 0,
+            "label": "Unavailable",
+            "summary": "Deepfake detection unavailable — torch not installed (free-tier hosting).",
+            "model": "dima806/deepfake_vs_real_image_detection",
+        }
 
     if not _load_model():
         return {
