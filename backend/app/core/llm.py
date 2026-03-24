@@ -66,23 +66,29 @@ async def _try_ddg_chat(prompt: str, max_retries: int = 2) -> str | None:
                     _ddg_chat_available = False
                     return None
 
-                result = await asyncio.to_thread(ddgs.chat, prompt, model=model)
+                # Strict 15-second timeout per call — prevents hanging on Render
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(ddgs.chat, prompt, model=model),
+                    timeout=15.0
+                )
                 if result and len(result.strip()) > 5:
                     logger.info(f"DDG Chat response via {model} (attempt {attempt+1})")
                     return result.strip()
+            except asyncio.TimeoutError:
+                logger.warning(f"DDG {model} attempt {attempt+1} timed out (15s)")
+                break  # skip remaining retries for this model
             except Exception as e:
                 err_str = str(e).lower()
                 if any(kw in err_str for kw in ["rate", "limit", "429", "too many"]):
-                    # Rate limited — pause briefly then try next model
-                    _ddg_disabled_until = time.time() + 15
+                    _ddg_disabled_until = time.time() + 10
                     logger.warning(f"DDG {model} rate limited, trying next model")
-                    break  # skip remaining retries for this model
+                    break
                 else:
                     logger.warning(f"DDG {model} attempt {attempt+1} failed: {e}")
-                    await asyncio.sleep(1 * (attempt + 1))  # exponential backoff
+                    await asyncio.sleep(0.5 * (attempt + 1))
 
-    # All models failed — disable temporarily
-    _ddg_disabled_until = time.time() + 30
+    # All models failed — disable temporarily (shorter cooldown for faster recovery)
+    _ddg_disabled_until = time.time() + 15
     logger.warning("All DDG Chat models failed — falling back to NLP")
     return None
 

@@ -92,8 +92,10 @@ async def _search_web(query: str, max_results: int = 6) -> list[dict]:
 
     try:
         ddgs = DDGS()
-        results = await asyncio.to_thread(
-            ddgs.text, query, max_results=max_results
+        # 10-second timeout — prevents hanging on cloud hosts with restricted IPs
+        results = await asyncio.wait_for(
+            asyncio.to_thread(ddgs.text, query, max_results=max_results),
+            timeout=10.0
         )
         return [
             {
@@ -104,6 +106,9 @@ async def _search_web(query: str, max_results: int = 6) -> list[dict]:
             for r in results
             if r.get("body") or r.get("snippet")
         ]
+    except asyncio.TimeoutError:
+        logger.warning(f"Web search timed out for query '{query}' (10s)")
+        return []
     except Exception as e:
         logger.error(f"Web search failed for query '{query}': {e}")
         return []
