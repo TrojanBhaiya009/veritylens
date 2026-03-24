@@ -1689,9 +1689,9 @@ body {
 
 .media-indicator {
   display: grid;
-  grid-template-columns: 140px 1fr 44px;
+  grid-template-columns: 100px 1fr 36px;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .media-indicator-label {
@@ -1735,8 +1735,8 @@ body {
 /* ---- Dual Detection Layout ---- */
 .media-dual-results {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  grid-template-columns: 1fr;
+  gap: 16px;
 }
 
 .media-detection-column {

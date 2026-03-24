@@ -84,15 +84,12 @@ def _relevance_score(claim: str, evidence: dict) -> float:
     return min(overlap, 1.5)
 
 
-async def _search_web(query: str, max_results: int = 6) -> list[dict]:
-    """Search the web using DuckDuckGo."""
+async def _search_web_ddgs(query: str, max_results: int = 6) -> list[dict]:
+    """Search using the ddgs library (primary method)."""
     if DDGS is None:
-        logger.warning("ddgs package not installed; web evidence retrieval is disabled")
         return []
-
     try:
         ddgs = DDGS()
-        # 10-second timeout — prevents hanging on cloud hosts with restricted IPs
         results = await asyncio.wait_for(
             asyncio.to_thread(ddgs.text, query, max_results=max_results),
             timeout=10.0
@@ -107,11 +104,72 @@ async def _search_web(query: str, max_results: int = 6) -> list[dict]:
             if r.get("body") or r.get("snippet")
         ]
     except asyncio.TimeoutError:
-        logger.warning(f"Web search timed out for query '{query}' (10s)")
+        logger.warning(f"DDG library search timed out for '{query}'")
         return []
     except Exception as e:
-        logger.error(f"Web search failed for query '{query}': {e}")
+        logger.warning(f"DDG library search failed for '{query}': {e}")
         return []
+
+
+async def _search_web_httpx(query: str, max_results: int = 6) -> list[dict]:
+    """Fallback: scrape DuckDuckGo HTML search directly via httpx."""
+    import httpx
+    from urllib.parse import quote_plus
+
+    try:
+        url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            html = resp.text
+
+        # Parse results from HTML
+        results = []
+        # DuckDuckGo HTML results have class="result__a" for titles and "result__snippet" for snippets
+        title_pattern = re.compile(r'<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>', re.DOTALL)
+        snippet_pattern = re.compile(r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>', re.DOTALL)
+
+        titles = title_pattern.findall(html)
+        snippets = snippet_pattern.findall(html)
+
+        for i in range(min(len(titles), max_results)):
+            raw_url = titles[i][0]
+            # DDG wraps URLs in a redirect — extract the actual URL
+            actual_url = raw_url
+            uddg_match = re.search(r'uddg=([^&]+)', raw_url)
+            if uddg_match:
+                from urllib.parse import unquote
+                actual_url = unquote(uddg_match.group(1))
+
+            title_text = re.sub(r'<[^>]+>', '', titles[i][1]).strip()
+            snippet_text = re.sub(r'<[^>]+>', '', snippets[i]).strip() if i < len(snippets) else ""
+
+            if snippet_text and actual_url:
+                results.append({
+                    "title": title_text,
+                    "url": actual_url,
+                    "snippet": snippet_text,
+                })
+
+        logger.info(f"httpx fallback search returned {len(results)} results for '{query[:50]}'")
+        return results
+    except Exception as e:
+        logger.error(f"httpx fallback search failed for '{query}': {e}")
+        return []
+
+
+async def _search_web(query: str, max_results: int = 6) -> list[dict]:
+    """Search the web — tries ddgs library first, falls back to httpx scraping."""
+    # Try primary method
+    results = await _search_web_ddgs(query, max_results)
+    if results:
+        return results
+
+    # Fallback to httpx scraping
+    return await _search_web_httpx(query, max_results)
 
 
 async def retrieve_evidence(claim: str) -> list[dict]:
