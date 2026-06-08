@@ -1,10 +1,11 @@
 """
 LLM wrapper — multi-provider with automatic fallback.
 Priority chain:
-  1. DuckDuckGo Chat (free, multi-model fallback)
-  2. Local NLP-based processing (always available, enhanced)
+  1. User-configured provider (OpenAI, Anthropic, Google, OpenRouter, Custom)
+  2. DuckDuckGo Chat (free, multi-model fallback)
+  3. Local NLP-based processing (always available, enhanced)
 
-No external API keys required.
+No external API keys required by default.
 """
 
 import asyncio
@@ -17,9 +18,37 @@ import time
 from collections import Counter
 from typing import Optional
 
-import httpx
-
 logger = logging.getLogger(__name__)
+
+# ============================================================
+# Multi-provider config (set by main.py per request)
+# ============================================================
+
+_llm_config = {
+    'provider': 'duckduckgo',  # default
+    'api_key': None,
+    'base_url': None,
+    'model': None,
+}
+
+
+def set_llm_config(provider: str = 'duckduckgo', api_key: Optional[str] = None,
+                    base_url: Optional[str] = None, model: Optional[str] = None):
+    """Set the LLM provider configuration for subsequent calls."""
+    global _llm_config
+    _llm_config = {
+        'provider': provider,
+        'api_key': api_key,
+        'base_url': base_url,
+        'model': model,
+    }
+    logger.info(f"LLM config set: provider={provider}, model={model}")
+
+
+def get_llm_config() -> dict:
+    """Get current LLM configuration."""
+    return _llm_config.copy()
+
 
 # ============================================================
 # DuckDuckGo Chat — multi-model fallback
@@ -28,7 +57,7 @@ logger = logging.getLogger(__name__)
 _ddg_chat_available = True
 _ddg_disabled_until = 0  # timestamp when to re-enable after failures
 
-# Models to try in order — if one fails, fall back to next
+# Models to try in order - if one fails, fall back to next
 _DDG_MODELS = [
     "gpt-4o-mini",
     "claude-3-haiku",
@@ -55,7 +84,7 @@ async def _try_ddg_chat(prompt: str, max_retries: int = 2) -> str | None:
         from ddgs import DDGS
     except ImportError:
         _ddg_chat_available = False
-        logger.warning("duckduckgo_search not installed — DDG Chat disabled")
+        logger.warning("duckduckgo_search not installed - DDG Chat disabled")
         return None
 
     for model in _DDG_MODELS:
@@ -66,7 +95,7 @@ async def _try_ddg_chat(prompt: str, max_retries: int = 2) -> str | None:
                     _ddg_chat_available = False
                     return None
 
-                # Strict 15-second timeout per call — prevents hanging on Render
+                # Strict 15-second timeout per call - prevents hanging on Render
                 result = await asyncio.wait_for(
                     asyncio.to_thread(ddgs.chat, prompt, model=model),
                     timeout=15.0
@@ -87,9 +116,9 @@ async def _try_ddg_chat(prompt: str, max_retries: int = 2) -> str | None:
                     logger.warning(f"DDG {model} attempt {attempt+1} failed: {e}")
                     await asyncio.sleep(0.5 * (attempt + 1))
 
-    # All models failed — disable temporarily (shorter cooldown for faster recovery)
+    # All models failed - disable temporarily (shorter cooldown for faster recovery)
     _ddg_disabled_until = time.time() + 15
-    logger.warning("All DDG Chat models failed — falling back to NLP")
+    logger.warning("All DDG Chat models failed - falling back to NLP")
     return None
 
 
@@ -99,14 +128,35 @@ async def _try_ddg_chat(prompt: str, max_retries: int = 2) -> str | None:
 
 async def ask_llm(prompt: str, max_retries: int = 2) -> str:
     """
-    Try to use a free LLM via DuckDuckGo Chat.
-    If unavailable, raises RuntimeError so callers use NLP fallback.
+    Try user-configured LLM first, then DuckDuckGo Chat.
+    If both unavailable, raises RuntimeError so callers use NLP fallback.
     """
+    config = get_llm_config()
+    
+    # Try user-configured provider first (if not duckduckgo)
+    if config['provider'] != 'duckduckgo':
+        try:
+            from .llm_multi import ask_llm as ask_llm_multi
+            result = await ask_llm_multi(
+                prompt,
+                provider=config['provider'],
+                api_key=config['api_key'],
+                base_url=config['base_url'],
+                model=config['model'],
+                max_retries=max_retries
+            )
+            if result:
+                return result
+        except Exception as e:
+            logger.warning(f"Configured provider '{config['provider']}' failed: {e}")
+            logger.info("Falling back to DuckDuckGo Chat...")
+    
+    # Fallback to DuckDuckGo Chat
     result = await _try_ddg_chat(prompt, max_retries=max_retries)
     if result:
         return result
-
-    raise RuntimeError("No free LLM available — use NLP fallback pipeline")
+    
+    raise RuntimeError("No LLM available — use NLP fallback pipeline")
 
 
 # ============================================================
@@ -169,7 +219,7 @@ def _detect_language(text: str) -> str:
     Returns: 'hindi' (Devanagari), 'hinglish' (Latin + Hindi loan words), or 'english'.
     """
     text = text.strip()
-    # Count Devanagari characters (Unicode range U+0900–U+097F)
+    # Count Devanagari characters (Unicode range U+0900-U+097F)
     devanagari_chars = len(re.findall(r'[\u0900-\u097F]', text))
     latin_chars = len(re.findall(r'[a-zA-Z]', text))
     total_alpha = devanagari_chars + latin_chars
@@ -200,7 +250,7 @@ def _detect_language(text: str) -> str:
 def _translate_hindi_to_english_keywords(text: str) -> str:
     """
     Translate Hindi (Devanagari) text to English keywords for web search.
-    Not a full translation — just keyword extraction and mapping.
+    Not a full translation - just keyword extraction and mapping.
     """
     words = re.findall(r'[\u0900-\u097F]+', text)
     english_parts = []
@@ -331,7 +381,7 @@ def validate_input(text: str) -> tuple[bool, str]:
 
     lang = _detect_language(text)
 
-    # Count words — include both Latin and Devanagari
+    # Count words - include both Latin and Devanagari
     latin_words = re.findall(r'\b[a-zA-Z0-9]+\b', text)
     hindi_words = re.findall(r'[\u0900-\u097F]+', text)
     total_words = len(latin_words) + len(hindi_words)
@@ -361,7 +411,7 @@ def validate_input(text: str) -> tuple[bool, str]:
 
 
 # ============================================================
-# Enhanced NLP — Claim Extraction
+# Enhanced NLP - Claim Extraction
 # ============================================================
 
 def _extract_entities(text: str) -> dict:
@@ -401,7 +451,7 @@ def _extract_claims_nlp(text: str) -> list[str]:
     if not _is_valid_sentence(text):
         return []
 
-    # Split into sentences — handle missing punctuation too
+    # Split into sentences - handle missing punctuation too
     chunks = re.split(r'(?<=[.!?])\s+|\n+|;\s*', text)
     # If no split happened and text doesn't end with punctuation, use the whole text
     if len(chunks) <= 1 and not re.search(r'[.!?]\s*$', text):
@@ -520,13 +570,13 @@ def _extract_claims_nlp(text: str) -> list[str]:
 
 
 # ============================================================
-# Enhanced NLP — Search Query Generation
+# Enhanced NLP - Search Query Generation
 # ============================================================
 
 def _generate_search_queries_nlp(claim: str) -> list[str]:
     """
     Generate smart search queries from a claim using keyword extraction.
-    Supports English, Hindi (Devanagari), and Hinglish — always generates
+    Supports English, Hindi (Devanagari), and Hinglish - always generates
     English queries for web search since most search results are in English.
     """
     lang = _detect_language(claim)
@@ -601,7 +651,7 @@ def _generate_search_queries_nlp(claim: str) -> list[str]:
 
 
 # ============================================================
-# Enhanced NLP — Claim Classification
+# Enhanced NLP - Claim Classification
 # ============================================================
 
 def _classify_claim_type(claim: str) -> str:
@@ -617,10 +667,10 @@ def _classify_claim_type(claim: str) -> str:
     #   English SVO: "Modi is Oppenheimer", "Elon Musk is Albert Einstein"
     #   Hinglish SOV: "Modi oppenheimer hai", "Narendra modi oppenheimer hain"
     #   Mixed case: "narendra modi is oppenheimer"
-    
+
     # Identity verbs (English + Hinglish)
     identity_verbs = {'is', 'are', 'was', 'were', 'hai', 'hain', 'he', 'tha', 'thi', 'the', 'hoga', 'hogi'}
-    
+
     # Words that legitimize identity claims (titles, roles, articles, categories)
     legitimate_words = {
         'the', 'a', 'an', 'ka', 'ki', 'ke', 'ek',
@@ -637,7 +687,7 @@ def _classify_claim_type(claim: str) -> str:
         'first', 'second', 'third', 'last', 'best', 'worst',
         'chemical', 'reaction', 'process', 'known',
     }
-    
+
     # Words that indicate a descriptive/comparative claim, NOT an identity claim.
     # If ANY of these appear after the identity verb, it's not "X is Y" identity.
     non_identity_words = {
@@ -672,42 +722,42 @@ def _classify_claim_type(claim: str) -> str:
         'place', 'thing', 'way', 'fact', 'case', 'result', 'cause',
         'effect', 'source', 'example', 'problem', 'reason', 'answer',
     }
-    
+
     # Role/portrayal context words
     role_words = {
         'played', 'portrayed', 'portrays', 'acting', 'role', 'character',
         'film', 'movie', 'series', 'show', 'nicknamed', 'called',
         'alias', 'born', 'née', 'stage', 'pen', 'real', 'name',
     }
-    
+
     # Check if any role words appear in the claim
     claim_word_set = set(claim_lower.split())
     if not (role_words & claim_word_set):
         # Split claim into words, find identity verb position
         words = claim_lower.split()
         verb_positions = [i for i, w in enumerate(words) if w in identity_verbs]
-        
+
         for vpos in verb_positions:
             # Get words before and after the verb
             before = [w for w in words[:vpos] if w not in identity_verbs and len(w) > 1]
             after = [w for w in words[vpos+1:] if w not in identity_verbs and len(w) > 1]
-            
+
             # Check if any legitimate context words appear
             all_non_verb = set(before + after)
             if legitimate_words & all_non_verb:
                 continue
-            
+
             # If any word after the verb is a descriptive/comparative word,
             # this is NOT an identity claim (e.g. "Venus is hotter than Mercury")
             after_set = set(after)
             if non_identity_words & after_set:
                 continue
-            
+
             # Need name-like words on both sides (or SOV: 2+ names before verb, none after)
             if before and after:
-                # SVO: "Modi is Oppenheimer" — names on both sides
+                # SVO: "Modi is Oppenheimer" - names on both sides
                 return 'absurd_identity'
-        
+
         # SOV check for Hinglish: "Narendra modi oppenheimer hain"
         # Verb is at the end, everything before it is names
         if words and words[-1] in identity_verbs:
@@ -804,7 +854,7 @@ def _classify_claim_type(claim: str) -> str:
 
 
 # ============================================================
-# Enhanced NLP — Source Credibility
+# Enhanced NLP - Source Credibility
 # ============================================================
 
 def _get_source_credibility(url: str) -> float:
@@ -847,7 +897,7 @@ def _get_source_credibility(url: str) -> float:
 
 
 # ============================================================
-# Enhanced NLP — TF-IDF-like Keyword Weighting
+# Enhanced NLP - TF-IDF-like Keyword Weighting
 # ============================================================
 
 def _compute_word_weights(claim_words: list[str], evidence_list: list[dict]) -> dict[str, float]:
@@ -871,7 +921,7 @@ def _compute_word_weights(claim_words: list[str], evidence_list: list[dict]) -> 
     weights = {}
     for w in claim_words:
         df = doc_freq.get(w, 0)
-        # IDF: log(N / (1 + df)) — rare words are more important
+        # IDF: log(N / (1 + df)) - rare words are more important
         idf = math.log((N + 1) / (1 + df)) + 1.0
         weights[w] = idf
 
@@ -900,7 +950,7 @@ def _extract_numbers(text: str) -> list[float]:
 
 
 # ============================================================
-# Reward-Model Helper — Platt-style Confidence Calibration
+# Reward-Model Helper - Platt-style Confidence Calibration
 # ============================================================
 
 def _platt_calibrate(raw_score: float, k: float = 6.0, x0: float = 0.5) -> float:
@@ -969,7 +1019,7 @@ def _source_diversity_bonus(evidence: list[dict]) -> float:
         match = re.search(r'https?://(?:www\.)?([^/]+)', url)
         if match:
             domains.add(match.group(1).lower())
-    
+
     if len(domains) >= 4:
         return 8.0
     elif len(domains) >= 3:
@@ -980,7 +1030,7 @@ def _source_diversity_bonus(evidence: list[dict]) -> float:
 
 
 # ============================================================
-# Enhanced NLP — Claim Verification with Reward Scoring
+# Enhanced NLP - Claim Verification with Reward Scoring
 # ============================================================
 
 def _verify_claim_nlp(claim: str, evidence: list[dict]) -> dict:
@@ -1030,7 +1080,7 @@ def _verify_claim_nlp(claim: str, evidence: list[dict]) -> dict:
             "confidence": 90,
             "reasoning": (
                 f"This claim equates {_entity_str} with a fictional character without any role or "
-                f"portrayal context. As a literal factual statement, this is incorrect — the fictional "
+                f"portrayal context. As a literal factual statement, this is incorrect - the fictional "
                 f"character and the real entity mentioned are categorically different. The statement "
                 f"may be intended metaphorically, but as a factual claim it is false."
             ),
@@ -1061,7 +1111,7 @@ def _verify_claim_nlp(claim: str, evidence: list[dict]) -> dict:
             "reasoning": (
                 f"The claim about {_entity_str} expresses a subjective opinion or value judgment "
                 f"rather than an objective factual statement. Opinions and preferences cannot be "
-                f"verified as true or false through evidence — they reflect personal viewpoints "
+                f"verified as true or false through evidence - they reflect personal viewpoints "
                 f"rather than measurable facts."
             ),
         }
@@ -1329,7 +1379,7 @@ def _verify_claim_nlp(claim: str, evidence: list[dict]) -> dict:
 
             if alt1_found > 0 and alt2_found == 0:
                 # One part is supported, the other isn't → mild penalty, mark as partially true
-                support_score *= 0.85  # only 15% penalty — the supported part IS correct
+                support_score *= 0.85  # only 15% penalty - the supported part IS correct
                 compound_note = f"The claim mentions '{alt1}' (found in {alt1_found} source(s)) and '{alt2}' (not found in any source). Only part of this compound claim is supported by evidence."
             elif alt2_found > 0 and alt1_found == 0:
                 support_score *= 0.85
@@ -1572,7 +1622,7 @@ def _verify_claim_nlp(claim: str, evidence: list[dict]) -> dict:
             reasoning = (
                 f"Most sources supporting this claim about {entity_str} are from "
                 f"low-credibility websites. Only {high_cred_supporting_sources} authoritative "
-                f"source(s) corroborate it — insufficient for confident verification."
+                f"source(s) corroborate it - insufficient for confident verification."
             )
 
     # ---- RL Reward-Model Scoring ----

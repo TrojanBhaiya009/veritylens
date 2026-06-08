@@ -1,5 +1,5 @@
 """
-VerityLens — Fact & Claim Verification System
+VerityLens - Fact & Claim Verification System
 FastAPI backend with SSE streaming for per-claim pipeline progress.
 """
 
@@ -20,6 +20,12 @@ from .core.ai_detector import detect_ai_text
 from .core.media_detector import detect_ai_media
 from .core.deepfake_detector import detect_deepfake
 from .core.llm import validate_input
+from .core.llm_multi import (
+    ask_llm_with_fallback,
+    get_provider_configs,
+    validate_config,
+    PROVIDER_CONFIGS,
+)
 from .models.schemas import (
     AnalyzeRequest,
     EvidenceItem,
@@ -31,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="VerityLens API",
-    description="Fact & Claim Verification System — RL-Enhanced LLM Engine, No API Keys Required",
+    description="Fact & Claim Verification System - RL-Enhanced LLM Engine, No API Keys Required",
     version="4.0.0",
 )
 
@@ -64,7 +70,32 @@ app.add_middleware(
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "4.0.0", "engine": "VerityLens RL-Enhanced Engine (free, no API keys)"}
+    return {
+        "status": "ok",
+        "version": "4.1.0",
+        "engine": "VerityLens Multi-Model Engine (user-provided API keys)"
+    }
+
+
+@app.get("/api/providers")
+async def get_providers():
+    """Get available LLM provider configurations for frontend."""
+    configs = get_provider_configs()
+    return {
+        "providers": [
+            {
+                "id": pid,
+                "name": cfg["name"],
+                "models": cfg["models"],
+                "api_key_required": cfg["api_key_required"],
+                "base_url_required": cfg["base_url_required"],
+                "api_key_placeholder": cfg.get("api_key_placeholder", ""),
+                "base_url_placeholder": cfg.get("base_url_placeholder", ""),
+                "description": cfg["description"],
+            }
+            for pid, cfg in configs.items()
+        ]
+    }
 
 
 @app.post("/api/analyze")
@@ -72,8 +103,37 @@ async def analyze(request: AnalyzeRequest):
     """
     Full fact-checking pipeline with SSE streaming.
     Streams per-claim results as each claim is verified.
+    Supports user-configured LLM provider.
     """
-
+    
+    # Set LLM configuration from request (if provided)
+    model_config = request.model_config
+    if model_config:
+        from .core.llm import set_llm_config, get_llm_config
+        from .core.llm_multi import validate_config
+        
+        # Validate config
+        is_valid, error_msg = validate_config(
+            provider=model_config.provider,
+            api_key=model_config.api_key,
+            base_url=model_config.base_url,
+            model=model_config.model
+        )
+        
+        if not is_valid:
+            yield _sse_event("error", {"message": error_msg})
+            return
+        
+        # Set the config for this request
+        set_llm_config(
+            provider=model_config.provider,
+            api_key=model_config.api_key,
+            base_url=model_config.base_url,
+            model=model_config.model
+        )
+        
+        logger.info(f"Using LLM provider: {model_config.provider}, model: {model_config.model}")
+    
     async def event_stream():
         try:
             # Step 1: Get input text

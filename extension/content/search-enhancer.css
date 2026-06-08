@@ -1,0 +1,33 @@
+/* content/search-enhancer.css - 搜索增强样式 */
+
+/* 广告标记 */
+.vl-ad-label {
+  animation: vl-pulse 2s ease-in-out infinite;
+}
+
+@keyframes vl-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* 官方网站标记 */
+.vl-official-label {
+  animation: vl-glow 2s ease-in-out infinite;
+}
+
+@keyframes vl-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
+}
+
+/* 通知动画 */
+@keyframes vl-slide-down {
+  from {
+    transform: translateX(-50%) translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
