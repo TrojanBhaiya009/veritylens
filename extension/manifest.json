@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "VerityLens - 搜索增强与事实核查",
+  "version": "1.0.0",
+  "description": "帮您找到真实的搜索结果，一键核查信息真伪",
+  
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "activeTab"
+  ],
+  
+  "host_permissions": [
+    "https://*.baidu.com/*",
+    "https://www.google.com/search*",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  
+  "content_scripts": [
+    {
+      "matches": ["*://*.baidu.com/s*", "*://www.baidu.com/s*"],
+      "js": ["content/search-enhancer.js"],
+      "css": ["content/search-enhancer.css"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["*://www.google.com/search*"],
+      "js": ["content/search-enhancer.js"],
+      "css": ["content/search-enhancer.css"],
+      "run_at": "document_end"
+    }
+  ],
+  
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "VerityLens"
+  },
+  
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": false
+  },
+  
+  "icons": {
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}
