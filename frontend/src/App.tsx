@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, Shield, Cpu, Search, Brain, Layers } from 'lucide-react';
+import { AlertCircle, Shield, Cpu, Search, Brain, Layers, Settings as SettingsIcon } from 'lucide-react';
 
 import DarkVeil from './components/DarkVeil';
 import Header from './components/Header';
@@ -11,13 +11,14 @@ import MediaDetector from './components/MediaDetector';
 import HistoryPanel, { addToHistory } from './components/HistoryPanel';
 import LandingPage from './components/LandingPage';
 import QuickExamples from './components/QuickExamples';
+import Settings from './components/Settings';
 import { analyzeText } from './api/client';
 import type { ClaimResult, AIDetectionResult, PipelineStage } from './types';
 
 import './styles.css';
 
 function App() {
-  const [page, setPage] = useState<'landing' | 'app'>('landing');
+  const [page, setPage] = useState<'landing' | 'app' | 'settings'>('landing');
   const [isLoading, setIsLoading] = useState(false);
   const [currentStage, setCurrentStage] = useState<PipelineStage>('idle');
   const [progress, setProgress] = useState(0);
@@ -107,12 +108,45 @@ function App() {
     return <LandingPage onGetStarted={() => setPage('app')} />;
   }
 
+  /* ---- Settings page ---- */
+  if (page === 'settings') {
+    return (
+      <>
+        <DarkVeil speed={0.5} noiseIntensity={0.3} hueShift={0} resolutionScale={0.5} />
+        <div className="app-container">
+          <Header />
+          <div className="settings-page-wrapper">
+            <button
+              className="back-to-app-btn"
+              onClick={() => setPage('app')}
+            >
+              ← Back to App
+            </button>
+            <Settings />
+          </div>
+        </div>
+      </>
+    );
+  }
+
   /* ---- Main app ---- */
   return (
     <>
       <DarkVeil speed={0.5} noiseIntensity={0.3} hueShift={0} resolutionScale={0.5} />
       <div className="app-container">
         <Header />
+
+        {/* Settings button */}
+        <div className="settings-button-container">
+          <button
+            className="settings-btn"
+            onClick={() => setPage('settings')}
+            title="Model Settings"
+          >
+            <SettingsIcon size={20} />
+            <span>Model Settings</span>
+          </button>
+        </div>
 
         {/* Quick Try examples */}
         <QuickExamples onTry={(text) => setQuickText(text)} disabled={isLoading} />
@@ -187,7 +221,7 @@ function App() {
             </div>
           </div>
           <div className="footer-bottom">
-            <span>No API keys required · Free & open source · Chain of Thought reasoning</span>
+            <span>Multi-Model Support · Bring Your Own Key · Free & open source</span>
           </div>
         </footer>
       </div>

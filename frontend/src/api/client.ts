@@ -1,5 +1,22 @@
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
 
+// Load model config from localStorage
+interface ModelConfig {
+  provider: string;
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}
+
+function getModelConfig(): ModelConfig | null {
+  try {
+    const saved = localStorage.getItem('veritylens_model_config');
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Stream the analysis pipeline via SSE.
  * Calls onEvent for each SSE event received.
@@ -8,10 +25,23 @@ export async function analyzeText(
   payload: { text: string; url: string },
   onEvent: (eventType: string, data: any) => void
 ): Promise<void> {
+  // Build request body with model config
+  const modelConfig = getModelConfig();
+  const body: any = { ...payload };
+  
+  if (modelConfig && modelConfig.provider !== 'duckduckgo') {
+    body.model_config = {
+      provider: modelConfig.provider,
+      api_key: modelConfig.apiKey || undefined,
+      base_url: modelConfig.baseUrl || undefined,
+      model: modelConfig.model || undefined,
+    };
+  }
+  
   const response = await fetch(`${API_BASE}/api/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

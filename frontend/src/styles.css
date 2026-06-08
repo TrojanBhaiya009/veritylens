@@ -2891,3 +2891,87 @@ body {
   .landing-stats { grid-template-columns: 1fr 1fr; gap: 8px; }
   .landing-features-grid { grid-template-columns: 1fr; }
 }
+
+/* ===== Settings Page Styles ===== */
+
+.settings-page-wrapper {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.back-to-app-btn {
+  padding: 0.6rem 1.2rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.back-to-app-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(99, 102, 241, 0.5);
+  color: white;
+  transform: translateX(-3px);
+}
+
+/* Settings Button in Main App */
+.settings-button-container {
+  display: flex;
+  justify-content: flex-end;
+  padding: 1rem 0 0.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.settings-btn:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #c7d2fe;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+.settings-btn span {
+  font-size: 0.85rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .settings-page-wrapper {
+    padding: 1rem;
+  }
+
+  .settings-button-container {
+    padding: 0.5rem;
+    justify-content: center;
+  }
+
+  .back-to-app-btn {
+    margin-bottom: 1rem;
+  }
+}
